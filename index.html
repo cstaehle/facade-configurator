@@ -1,27 +1,135 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<meta charset="UTF-8">
+<title>ShapeDiver Embed Example</title>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.2.4/jquery.min.js"   integrity="sha256-BbhdlvQf/xTY9gja0Dq3HiwQF8LaCRTXxZKRutelT44="   crossorigin="anonymous"></script>
-  <head>
-    <link rel="stylesheet" href="style.css">
-    <script src="script.js"></script>
-  </head>
 
-  <body>
-    <h1>nicht aufgeben</h1>
-    
-    
-    <iframe id='sd-iframe-14873' style='width:1200px;height:450px' frameBorder=0 allowFullScreen 
-    src='https://www.shapediver.com/embed/next-try2
-    ?viewerSettings=%7B%22allowFullscreen%22%3Afalse%2C%22showZoomControl%22%3Afalse%2C%22cameraRevertAtMouseUp%22%3Afalse%2C%22
-    cameraAutoAdjust%22%3Afalse%2C%22staticControls%22%3Afalse%7D'>
-      </iframe><script>document.getElementById('sd-iframe-14873').onload = 
-      function(){this.contentWindow.postMessage({'iFrameInit':true},'https://www.shapediver.com');}</script>
-      
-      <script src="script.js" defer></script>
-<div>
-   <button onclick="myFunction()">change point pos</button>
+<link href="https://www.shapediver.com/css/vendor/font-graphik.css" rel="stylesheet">
+
+
+</head>
+<body style="font-family: 'Graphik Web'; font-weight:100;";>
+
+<p style="font-size:xx-large">ShapeDiver example page with embedded viewer and external controls</p>
+
+<div style="width:100%;height:450px;overflow:hidden;">
+
+  <iframe id='sd-iframe' style='width:80%;height:100%' frameborder=0 src='https://shapediver.com/embed/next-try2?mode=full&viewerSettings=%7B%22showControls%22%3Afalse%7D'> </iframe>
+
+     <div id="sd-ext-controls" style="background:#f9f9f9; float:right;  width:15%; height:450px; right:0; padding-left:5%; padding-top:20px;"></div>
 </div>
-      
-  </body>
 
+<div>
+   <button onclick="pointPos()">change point pos</button>
+</div>
+
+<script>
+
+    // PREP
+    var blnHaveParameterDefinitions = false;
+
+    $('#sd-iframe').on('load', function() {
+        // request parameter definitions
+        payload = { command:"getParameterDefinitions" };
+        this.contentWindow.postMessage(payload,"https://shapediver.com");
+    });
+
+    $( window ).on("message", receiveMessage);
+
+    // FUNCTIONS
+
+    function receiveMessage(event)
+    {
+        var origin = event.origin || event.originalEvent.origin; // For Chrome, the origin property is in the event.originalEvent object.
+        var data = event.data || event.originalEvent.data;
+        var source = event.source || event.originalEvent.source;
+
+        // for security reasons we accept only messages from shapediver.com
+        if (origin != "https://shapediver.com" && origin != "https://local.shapediver.com")
+            return;
+
+        // we expect a JSON object with two values: a command name and a result
+
+        if (!data.hasOwnProperty("command")) {
+            console.warn("Message did not contain command name. Aborting.")
+            return;
+        }
+
+        /// at this point the result might be undefined for the command setParameterValue in many cases, this is being fixed asap
+        if (!data.hasOwnProperty("result")) {
+            console.warn("Message did not contain command result. Aborting.")
+            return;
+        }
+
+        var commandName = data.command;
+        var result = data.result;
+
+        // if we got parameter definitions for the first time, set up our controls
+
+        if (commandName == "getParameterDefinitions")
+        {
+
+          if (!blnHaveParameterDefinitions) {
+
+            $.each(result, function(key, value) {
+              console.log({ key, value })
+
+              // if (value['type'] == 'Integer') {
+              //   // create sliders - since range inputs allow only integer steps, we multiply the min and max values with 10^decimalPlaces
+              //   $("#sd-ext-controls").append("<div>" + value.visibleName + "<p><input id=\"" + key  + "\"  type=\"range\" name=\"" + key + "\" min=\"" + value.min * Math.pow(10,value.decimalPlaces) + "\" max=\"" + value.max * Math.pow(10,value.decimalPlaces) + "\"></div></p>");
+
+              //   // event watcher for slider value changes - send info to iframe
+              //   $("#" + key).change(function() {
+              //       // here we divide the range value again by 10^decimalplaces
+              //       var payload = { command: "setParameterValue", arguments: [ key, $("#" + this.id).val() / Math.pow(10,value.decimalPlaces) ] };
+              //       source.postMessage(payload, "https://shapediver.com" );
+              //   });
+
+              //   // remember decimal places
+              //   decimalPlacesForParameters[key] = value.decimalPlaces;                
+              // }
+
+              if (value['type'] == 'String') {
+                // create sliders - since range inputs allow only integer steps, we multiply the min and max values with 10^decimalPlaces
+                $("#sd-ext-controls").append("<div>" + value.visibleName + "<p><input id=\"" + key  + "\"  type=\"text\" name=\"" + key + "\"></div></p>");
+
+                // event watcher for slider value changes - send info to iframe
+                $("#" + key).change(function() {
+                    // here we divide the range value again by 10^decimalplaces
+                    var payload = { command: "setParameterValue", arguments: [ key, $("#" + this.id).val() ] };
+                    source.postMessage(payload, "https://shapediver.com");
+                });
+
+                // remember decimal places
+                decimalPlacesForParameters[key] = value.decimalPlaces;                
+              }
+
+            });
+
+            // make sure to get current values from viewer to set sliders correctly
+            var payload = { command: "getParameterValues" };
+            source.postMessage(payload,origin);
+
+            blnHaveParameterDefinitions = true;
+          }
+        }
+
+        // if we get informed about current parameter values, we set our sliders accordingly
+
+        if (commandName == "getParameterValues")
+        {
+            for (var param in result)
+            {
+                console.log("Setting parameter " + param + " to " + result[param]);
+                $("#" + param).val(result[param] * Math.pow(10,decimalPlacesForParameters[param]));
+            }
+        }
+
+    }
+
+
+</script>
+
+</body>
 </html>
